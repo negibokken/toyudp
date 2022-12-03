@@ -1,4 +1,4 @@
-use std::fmt::format;
+use std::fmt;
 
 fn add_mul(x: f64, y: f64) -> (f64, f64) {
     (x + y, x * y)
@@ -8,7 +8,6 @@ fn dump(s: &String) {
     println!("{}", s);
 }
 
-#[derive(Debug)]
 struct Person {
     first_name: String,
     last_name: String,
@@ -51,6 +50,28 @@ fn how(i: u32) -> &'static str {
     }
 }
 
+trait Show {
+    fn show(&self) -> String;
+}
+
+impl Show for i32 {
+    fn show (&self) -> String {
+        format!("four-byte signed {}", self)
+    }
+}
+
+impl Show for f64 {
+    fn show (&self) -> String {
+        format!("eight-byte float {}", self)
+    }
+}
+
+impl fmt::Debug for Person {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f,"{}",self.full_name())
+    }
+}
+
 fn main() {
     let s1 = "hello dolly".to_string();
     dump(&s1);
@@ -67,10 +88,18 @@ fn main() {
     let person = Person::new("John", "Smith");
     println!("person {}", person.full_name());
     println!("{:?}", person);
-    println!("{:?}", person.to_tuple());
+    // println!("{:?}", person.to_tuple());
     print!("hello world!!!!!!!!!!!!");
 
     let s = "I'm a little string".to_string();
     let a = A {s: &s};
     println!("{:?}", a);
+
+    let answer = 42;
+    let maybe_pi = 3.14;
+    let s1 = answer.show();
+    let s2 = maybe_pi.show();
+    println!("show {}", s1);
+    println!("show {}", s2);
+    println!("{:?}", person);
 }
