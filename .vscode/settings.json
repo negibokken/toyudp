@@ -1,0 +1,7 @@
+{
+    "editor.formatOnSave": true,
+    "editor.formatOnSaveMode": "modifications",
+    "rust-analyzer.checkOnSave.enable": true,
+    "trailing-spaces.deleteModifiedLinesOnly": true,
+    "rust-analyzer.checkOnSave.allTargets": true
+}
