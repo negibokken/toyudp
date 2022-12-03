@@ -101,7 +101,7 @@ fn dump2<T>(value: & T) where T: std::fmt::Debug {
     println!("value is {:?}", value);
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 enum Direction {
     Up,
     Down,
@@ -129,6 +129,102 @@ impl Direction {
         }
     }
 }
+
+#[derive(PartialEq,PartialOrd)]
+enum Speed {
+    Slow = 10,
+    Medium = 20,
+    Fast = 50
+}
+
+enum Difficulty {
+    Easy = 1,
+    Medium,
+    Hard,
+}
+
+#[derive(Debug)]
+enum Value {
+    Number(f64),
+    Str(String),
+    Bool(bool)
+}
+
+fn dump3(v: &Value) {
+    use Value::*;
+    match v {
+        Number(n) => println!("number is {}", n),
+        Str(ref s) => println!("string i '{}'", s),
+        Bool(b) => println!("boolean is {}", b)
+
+    }
+}
+
+impl Value {
+    fn to_str(self) -> Option<String>{
+        match self {
+            Value::Str(s) => Some(s),
+            _ => None
+        }
+    }
+}
+
+#[derive(Debug)]
+struct Point {
+    x: f32,
+    y: f32,
+}
+
+fn match_tuple(t: (i32, String)) {
+    let text = match t {
+        (0,s) => format!("zero {}", s),
+        (1, ref s) if s == "hello" => format!("hello one!"),
+        tt => format!("no match {:?}",tt),
+    };
+    println!("{}", text);
+}
+
+type NodeBox = Option<Box<Node>>;
+
+#[derive(Debug)]
+struct Node {
+    payload: String,
+    left: NodeBox,
+    right: NodeBox,
+}
+
+impl Node {
+    fn new (s: &str) -> Node {
+        Node {payload: s.to_string(), left: None, right:None}
+    }
+
+    fn boxer (node:Node) -> NodeBox {
+        Some(Box::new(node))
+    }
+
+    fn set_left (&mut self, node: Node)  {
+        self.left = Self::boxer(node);
+    }
+
+    fn set_right (&mut self, node: Node)  {
+        self.right = Self::boxer(node);
+    }
+
+    fn insert(&mut self, data: &str) {
+        if data < &self.payload {
+            match self.left {
+                Some(ref mut n) => n.insert(data),
+                None => self.set_left(Self::new(data)),
+            }
+        } else {
+            match self.right {
+                Some(ref mut n) => n.insert(data),
+                None => self.set_right(Self::new(data)),
+            }
+        }
+    }
+}
+
 
 fn main() {
     let s1 = "hello dolly".to_string();
@@ -176,4 +272,52 @@ fn main() {
         println!("d {:?}", d);
         d = d.next();
     }
+
+    assert_eq!(d, Direction::Left);
+
+    let s = Speed::Slow;
+    let speed = s as u32;
+    println!("speed {}", speed);
+
+    use Value::*;
+    let n = Number(2.3);
+    let s = Str("hello".to_string());
+    let b = Bool(true);
+
+    dump3(&n);
+    dump3(&s);
+    dump3(&b);
+    println!("s? {:?}", s.to_str());
+
+    let p = Point { x: 1.0, y: 2.0 };
+    let Point {x,y} = p;
+    println!("x: {}, y: {}, p: {:?}", x,y,p);
+
+    let f =  |x| x*x;
+    let res = f(10);
+    println!("res: {}", res);
+
+    let name = "dolly".to_string();
+    let age = 42;
+
+    let cname = name.to_string();
+
+    let c = move || {
+        println!("name {} age {}", cname, age);
+    };
+    c();
+    println!("name {}",name);
+
+    let mut root = Node::new("root");
+    root.set_left(Node::new("left"));
+    root.set_right(Node::new("right"));
+
+    println!("{:?}", root);
+
+    let mut root2 = Node::new("root");
+    root2.insert("one");
+    root2.insert("two");
+    root2.insert("four");
+
+    println!("root {:#?}", root2);
 }
