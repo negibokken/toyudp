@@ -101,6 +101,35 @@ fn dump2<T>(value: & T) where T: std::fmt::Debug {
     println!("value is {:?}", value);
 }
 
+#[derive(Debug)]
+enum Direction {
+    Up,
+    Down,
+    Left,
+    Right,
+}
+
+impl Direction {
+    fn as_str(&self) -> &'static str {
+        match *self {
+            Direction::Up => "Up",
+            Direction::Down => "Down",
+            Direction::Left => "Left",
+            Direction::Right => "Right",
+        }
+    }
+
+    fn next(&self) -> Direction {
+        use Direction::*;
+        match *self {
+            Up => Right,
+            Right => Down,
+            Down => Left,
+            Left => Up,
+        }
+    }
+}
+
 fn main() {
     let s1 = "hello dolly".to_string();
     dump(&s1);
@@ -140,4 +169,11 @@ fn main() {
 
     let n = 42;
     dump2(&n);
+    let start = Direction::Left;
+    println!("{:?}",start);
+    let mut d = start;
+    for _ in 0..8 {
+        println!("d {:?}", d);
+        d = d.next();
+    }
 }
