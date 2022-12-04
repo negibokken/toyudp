@@ -223,6 +223,16 @@ impl Node {
             }
         }
     }
+
+    fn visit(&self) {
+        if let Some(ref left) = self.left {
+            left.visit()
+        }
+        println!("{}", self.payload);
+        if let Some(ref right) = self.right {
+            right.visit();
+        }
+    }
 }
 
 
@@ -320,4 +330,6 @@ fn main() {
     root2.insert("four");
 
     println!("root {:#?}", root2);
+    println!("root hello");
+    root.visit();
 }
