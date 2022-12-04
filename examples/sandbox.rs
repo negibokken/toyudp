@@ -1,6 +1,13 @@
 use std::fmt;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
+use std::thread;
+use std::time;
+use std::sync::Arc;
+use std::sync::mpsc;
+use std::sync::Barrier;
+use std::sync::Mutex;
+
 
 use serde_json::to_string_pretty;
 
@@ -239,6 +246,14 @@ impl <T: PartialOrd> Node<T> {
     }
 }
 
+struct MyString(String);
+
+impl MyString {
+    fn new (s: &str) -> MyString {
+        MyString(s.to_string())
+    }
+}
+
 
 fn main() {
     let s1 = "hello dolly".to_string();
@@ -355,4 +370,102 @@ fn main() {
 
     println!("len {}, {}", rs1.len(), rs2.len());
 
+
+    let mut threads = Vec::new();
+    for i in 0..5 {
+        let t = thread::spawn(move || println!("hello {}", i) );
+        threads.push(t);
+    }
+    for t in threads {
+        t.join().expect("thread failed");
+    }
+
+    let name2 = "dolly";
+    let t1 = thread::spawn(move || {
+        println!("hello {}", name2);
+    });
+    let t2 = thread::spawn(move || {
+        println!("goodbye {}", name2);
+    });
+    t1.join().expect("hello");
+    t2.join().expect("hello");
+
+    #[derive(Debug,Copy,Clone)]
+    struct TestSpawn<'a> {
+        name: &'a str,
+        age: u64,
+    }
+
+    let test_spawn = TestSpawn {
+        name: "John", age: 100,
+    };
+
+    let t3 = thread::spawn(move || {
+        println!("name: {}, age: {}", test_spawn.name, test_spawn.age);
+    });
+    let t4 = thread::spawn(move || {
+        println!("name: {}, age: {}", test_spawn.name, test_spawn.age);
+    });
+
+    t3.join().expect("t3 failed");
+    t4.join().expect("t4 failed");
+
+
+    let mut threads2 = Vec::new();
+    let name = Arc::new(MyString::new("dolly"));
+
+    for i in 0..5 {
+        let tname = name.clone();
+        let t = thread::spawn(move || {
+            println!("hello {} count {}", tname.0, i);
+        });
+        threads2.push(t);
+    }
+
+    for t in threads2 {
+        t.join().expect("thread failed");
+    }
+
+    let nthreads = 5;
+    let (tx, rx) = mpsc::channel();
+
+    for i in 0..nthreads {
+        let tx = tx.clone();
+        thread::spawn(move || {
+            let response = format!("hello {}", i);
+            tx.send(response).unwrap();
+        });
+    }
+
+    for _ in 0..nthreads {
+        println!("got {:?}", rx.recv());
+    }
+
+    let mut threads4 = Vec::new();
+    let barrier = Arc::new(Barrier::new(nthreads));
+
+    for i in 0..nthreads {
+        let barrier = barrier.clone();
+        let t = thread::spawn(move || {
+            println!("before wait {}", i);
+            barrier.wait();
+            println!("after wait {}", i);
+        });
+        threads4.push(t);
+    }
+
+    for t in threads4 {
+        t.join().unwrap();
+    }
+
+    let ans = Arc::new(Mutex::new(42));
+
+    let answer_ref = ans.clone();
+    let t = thread::spawn(move || {
+        let mut answer = answer_ref.lock().unwrap();
+        *answer = 55;
+    });
+    t.join().unwrap();
+    let ar = ans.lock().unwrap();
+    assert_eq!(*ar,55);
 }

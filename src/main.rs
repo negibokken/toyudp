@@ -18,8 +18,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 };
 
-                if let Err(e) = socket.write_all(&buf[0..n]).await {
-                    eprint!("failed to write to socket; err = {:?}", e);
+                if let Err(e) = socket.write_all(&buf[0..n]).await { eprint!("failed to write to socket; err = {:?}", e);
                     return;
                 }
             }
