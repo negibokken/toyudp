@@ -1,5 +1,8 @@
 use std::fmt;
 use std::cell::{Cell, RefCell};
+use std::rc::Rc;
+
+use serde_json::to_string_pretty;
 
 fn add_mul(x: f64, y: f64) -> (f64, f64) {
     (x + y, x * y)
@@ -345,4 +348,11 @@ fn main() {
 
     *greetin.borrow_mut() = "hola".to_string();
     assert_eq!(*greetin.borrow(), "hola");
+
+    let rc = "hello".to_string();
+    let rs1 = Rc::new(rc);
+    let rs2 = rs1.clone();
+
+    println!("len {}, {}", rs1.len(), rs2.len());
+
 }
