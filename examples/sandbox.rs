@@ -1,4 +1,5 @@
 use std::fmt;
+use std::cell::{Cell, RefCell};
 
 fn add_mul(x: f64, y: f64) -> (f64, f64) {
     (x + y, x * y)
@@ -184,34 +185,34 @@ fn match_tuple(t: (i32, String)) {
     println!("{}", text);
 }
 
-type NodeBox = Option<Box<Node>>;
+type NodeBox<T> = Option<Box<Node<T>>>;
 
 #[derive(Debug)]
-struct Node {
-    payload: String,
-    left: NodeBox,
-    right: NodeBox,
+struct Node<T> {
+    payload: T,
+    left: NodeBox<T>,
+    right: NodeBox<T>,
 }
 
-impl Node {
-    fn new (s: &str) -> Node {
-        Node {payload: s.to_string(), left: None, right:None}
+impl <T: PartialOrd> Node<T> {
+    fn new (s: T) -> Node<T> {
+        Node {payload: s, left: None, right:None}
     }
 
-    fn boxer (node:Node) -> NodeBox {
+    fn boxer (node:Node<T>) -> NodeBox<T> {
         Some(Box::new(node))
     }
 
-    fn set_left (&mut self, node: Node)  {
+    fn set_left (&mut self, node: Node<T>)  {
         self.left = Self::boxer(node);
     }
 
-    fn set_right (&mut self, node: Node)  {
+    fn set_right (&mut self, node: Node<T>)  {
         self.right = Self::boxer(node);
     }
 
-    fn insert(&mut self, data: &str) {
-        if data < &self.payload {
+    fn insert(&mut self, data: T) {
+        if data < self.payload {
             match self.left {
                 Some(ref mut n) => n.insert(data),
                 None => self.set_left(Self::new(data)),
@@ -228,7 +229,7 @@ impl Node {
         if let Some(ref left) = self.left {
             left.visit()
         }
-        println!("{}", self.payload);
+        // println!("{}", self.payload);
         if let Some(ref right) = self.right {
             right.visit();
         }
@@ -332,4 +333,16 @@ fn main() {
     println!("root {:#?}", root2);
     println!("root hello");
     root.visit();
+
+    let cc = Cell::new(42);
+    assert_eq!(cc.get(), 42);
+    cc.set(77);
+    assert_eq!(cc.get(), 77);
+
+    let greetin = RefCell::new("hello".to_string());
+    assert_eq!(*greetin.borrow(), "hello");
+    assert_eq!(greetin.borrow().len(), 5);
+
+    *greetin.borrow_mut() = "hola".to_string();
+    assert_eq!(*greetin.borrow(), "hola");
 }
