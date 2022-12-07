@@ -28,35 +28,37 @@ impl Server {
         let conn = self.conn.clone();
         let mut recv_buf = [0; BUF_MAXSIZE];
         let (amt, src) = conn.socket.recv_from(&mut recv_buf).unwrap();
-        println!("{:?}", recv_buf);
-        Some(Datagram::new(
+        let mut queue = self.recv_queue.lock().unwrap();
+        let data= Datagram::new(
             (&mut recv_buf[..amt]).to_vec(),
             None,
             Some(src),
-        ))
+        );
+        queue.push(data.clone());
+        println!("received: {:?}", recv_buf);
+        Some(data)
     }
 
     pub fn send_queue(&mut self, data: Datagram, dest: SocketAddr) {
+        let mut queue = self.send_queue.lock().unwrap();
+        queue.push(data.clone());
+
+        println!("sent: {:?}", data);
         {
             let conn = self.conn.clone();
-            let mut queue = self.send_queue.lock().unwrap();
-            queue.push(data.clone());
-            if let Some(dest) = data.dest {
-                let _ = conn.socket.send_to(&data.bytes, dest);
-            }
+            conn.socket.send_to(&data.bytes, dest).unwrap();
         }
     }
 
     pub fn run(mut self) -> JoinHandle<()> {
-        let t = thread::spawn(move || loop {
+        thread::spawn(move || loop {
             thread::sleep(time::Duration::from_millis(10));
             let data = self.poll_recv_queue().unwrap();
-            if let Some(dest) = data.src {
-                println!("here: {:?}", dest);
-                let data = Datagram::new(b"hello world".to_vec(), Some(dest), None);
+            if let Some(dest) = data.src() {
+                println!("destination: {:?}", dest);
+                let data = Datagram::new(b"hello world\n".to_vec(), Some(dest), None);
                 self.send_queue(data, dest);
             }
-        });
-        t
+        })
     }
 }
