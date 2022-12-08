@@ -3,7 +3,7 @@
 use super::{connection::Connection, datagram::Datagram};
 use std::{
     net::SocketAddr,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, mpsc::{Receiver, Sender}},
     thread::{self, JoinHandle}, time,
 };
 
@@ -50,15 +50,25 @@ impl Server {
         }
     }
 
-    pub fn run(mut self) -> JoinHandle<()> {
-        thread::spawn(move || loop {
+    pub fn run(&self, receiver: Receiver<Datagram>, sender: Sender<Datagram>) -> JoinHandle<()> {
+        let t1 = thread::spawn(move || loop {
             thread::sleep(time::Duration::from_millis(10));
-            let data = self.poll_recv_queue().unwrap();
+            let _ = self.poll_recv_queue().unwrap();
+            // let data = receiver.recv().unwrap();
+            // if let Some(dest) = data.src() {
+            //     println!("destination: {:?}", dest);
+            //     let data = Datagram::new(b"hello world\n".to_vec(), Some(dest), None);
+            //     // self.send_queue(data, dest);
+            //     sender.send(data).unwrap();
+            // }
+        });
+        let t2 = thread::spawn(move || {
+            thread::sleep(time::Duration::from_millis(10));
+            let data = Datagram::new(b"hello world\n".to_vec(), Some(dest), None);
             if let Some(dest) = data.src() {
-                println!("destination: {:?}", dest);
-                let data = Datagram::new(b"hello world\n".to_vec(), Some(dest), None);
                 self.send_queue(data, dest);
             }
-        })
+        });
+        t1
     }
 }
