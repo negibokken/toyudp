@@ -1,7 +1,10 @@
 use hex_literal::hex;
 use hkdf::Hkdf;
 use sha2::Sha256;
-use std::{net::UdpSocket, thread, sync::Arc};
+use std::net::SocketAddr;
+use std::{net::UdpSocket, sync::Arc, thread};
+use std::sync::mpsc;
+use std::sync::mpsc::{Sender,Receiver};
 
 fn expand_label(label: &str, length: usize) -> Vec<u8> {
     let label = format!("tls13 {}", label);
@@ -51,7 +54,7 @@ fn get_initial_keys(
 }
 
 fn get_initial_packet() -> Vec<u8> {
-// Client Initial Packet
+    // Client Initial Packet
     // Packet Header Byte
     let packet_header_byte: [u8; 1] = [205];
 
@@ -79,11 +82,7 @@ fn get_initial_packet() -> Vec<u8> {
     "
     );
 
-    let crypto_frame_header = hex!(
-        "
-        06 00 40 ee
-    "
-    );
+    let crypto_frame_header = hex!(" 06 00 40 ee");
 
     let client_hello = hex!("
         01 00 00 ea 03 03 00 01 02 03 04 05 06 07 08 09 0a 0b 0c 0d 0e 0f 10 11 12 13 14 15 16 17 18 19 1a 1b 1c 1d 1e 1f 00 00 06 13 01 13 02 13 03 01 00 00 bb 00 00 00 18 00 16 00 00 13 65 78 61 6d 70 6c 65 2e 75 6c 66 68 65 69 6d 2e 6e 65 74 00 0a 00 08 00 06 00 1d 00 17 00 18 00 10 00 0b 00 09 08 70 69 6e 67 2f 31 2e 30 00 0d 00 14 00 12 04 03 08 04 04 01 05 03 08 05 05 01 08 06 06 01 02 01 00 33 00 26 00 24 00 1d 00 20 35 80 72 d6 36 58 80 d1 ae ea 32 9a df 91 21 38 38 51 ed 21 a2 8e 3b 75 e9 65 d0 d2 cd 16 62 54 00 2d 00 02 01 01 00 2b 00 03 02 03 04 00 39 00 31 03 04 80 00 ff f7 04 04 80 a0 00 00 05 04 80 10 00 00 06 04 80 10 00 00 07 04 80 10 00 00 08 01 0a 09 01 0a 0a 01 03 0b 01 19 0f 05 63 5f 63 69 64
@@ -115,16 +114,31 @@ fn run_server() -> Arc<UdpSocket> {
 
     let cloned_socket = socket_arc.clone();
 
+    println!("server is runnning on {}", socket_arc.local_addr().unwrap());
     thread::spawn(move || {
         let mut buf: [u8; 1500] = [0; 1500];
         loop {
             let (size, soc) = cloned_socket.recv_from(&mut buf).unwrap();
-            println!("{:?}", std::str::from_utf8(&buf[0..size]).unwrap());
-            cloned_socket.send_to(b"pong", soc).unwrap();
+            println!("{}", std::str::from_utf8(&buf[0..size]).unwrap());
             cloned_socket.send_to(b"pong", soc).unwrap();
         }
     });
     socket_arc
+}
+
+fn run_client(server_address: SocketAddr) {
+    let client = UdpSocket::bind("0.0.0.0:0").unwrap();
+    let client_arc = Arc::new(client);
+
+    let thread_client= client_arc.clone();
+    thread::spawn(move || {
+        let mut recv_buf: [u8; 1500] = [0; 1500];
+        loop {
+            thread_client.send_to(b"ping", server_address).unwrap();
+            let size = thread_client.recv(&mut recv_buf).unwrap();
+            println!("{}", std::str::from_utf8(&recv_buf[0..size]).unwrap());
+        }
+    });
 }
 
 fn main() {
@@ -144,16 +158,15 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use std::net::UdpSocket;
-    use std::thread;
-    use std::sync::mpsc::{Sender, Receiver};
     use std::sync::mpsc;
+    use std::sync::mpsc::{Receiver, Sender};
     use std::sync::Arc;
+    use std::thread;
+    use std::time;
 
-    use crate::get_initial_keys;
+    use crate::{get_initial_keys, run_client};
     use crate::run_server;
     use hex_literal::hex;
-
-
 
     #[test]
     fn test_get_client() {
@@ -189,7 +202,7 @@ mod tests {
         let thread_client = client_arc.clone();
         // let mut recv_buf: Vec<u8> = Vec::new();
         thread::spawn(move || {
-            let mut recv_buf: [u8; 1500] = [0;1500];
+            let mut recv_buf: [u8; 1500] = [0; 1500];
             loop {
                 let size = thread_client.recv(&mut recv_buf).unwrap();
                 thread_tx.send(recv_buf[0..size].to_vec());
@@ -201,6 +214,21 @@ mod tests {
         println!("{:?}", std::str::from_utf8(&ans));
         let ans = rx.recv().unwrap();
         println!("{:?}", std::str::from_utf8(&ans));
-        assert_eq!(1,1);
+    }
+
+    #[test]
+    fn test_run_client() {
+        let server = Arc::new(UdpSocket::bind("0.0.0.0:0").unwrap());
+        let (tx,rx): (Sender<_>, Receiver<_>) = mpsc::channel();
+        let thread_server = server.clone();
+        thread::spawn(move || {
+            let mut buf: [u8; 1500] = [0; 1500];
+            let size = thread_server.recv(&mut buf).unwrap();
+            tx.send(buf[0..size].to_vec());
+        });
+        std::thread::sleep(time::Duration::from_millis(1000));
+        run_client(server.local_addr().unwrap());
+        let msg = rx.recv().unwrap();
+        assert_eq!(msg, b"ping".to_vec());
     }
 }
