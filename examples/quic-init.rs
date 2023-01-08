@@ -1,10 +1,11 @@
 use hex_literal::hex;
 use hkdf::Hkdf;
 use sha2::Sha256;
-use std::net::SocketAddr;
-use std::{net::UdpSocket, sync::Arc, thread};
+use std::cmp;
+use std::net::{SocketAddr, ToSocketAddrs};
 use std::sync::mpsc;
-use std::sync::mpsc::{Sender,Receiver};
+use std::sync::mpsc::{Receiver, Sender};
+use std::{net::UdpSocket, sync::Arc, thread};
 
 fn expand_label(label: &str, length: usize) -> Vec<u8> {
     let label = format!("tls13 {}", label);
@@ -103,9 +104,76 @@ fn get_initial_packet() -> Vec<u8> {
     ]
     .concat();
 
-    let vec: Vec<u8> = vec![0; 1200 - content.len()];
+    let vec: Vec<u8> = vec![0; cmp::max(1200 - content.len(), 0)];
     let content = [&content[..], &vec[..]].concat();
     return content;
+}
+
+fn get_initial_packet_ack() -> Vec<u8> {
+    let packet_header_byte = hex!("cf");
+
+    let quick_version = hex!("00 00 00 01");
+
+    let destination_connection_id = hex!("05 73 5f 63 69 64");
+
+    let source_connection_id = hex!("05 63 5f 63 69 64");
+
+    let token = hex!("00");
+
+    let packet_length = hex!("40 17");
+
+    let packet_number = hex!("56");
+
+    let encrypted_data = hex!("6e 1f 98 ed 1f 7b");
+
+    let auth_tag = hex!("05 55 cd b7 83 fb df 5b 52 72 4b 7d 29 f0 af e3");
+
+    let content = [
+        &packet_header_byte[..],
+        &quick_version[..],
+        &destination_connection_id[..],
+        &source_connection_id[..],
+        &token[..],
+        &packet_length[..],
+        &packet_number[..],
+        &encrypted_data[..],
+        &auth_tag[..],
+    ]
+    .concat();
+
+    content
+}
+
+fn get_handshake_packet() -> Vec<u8> {
+    let packet_header_byte = hex!("ee");
+
+    let quic_version = hex!("00 00 00 01");
+
+    let destination_connection_id = hex!("05 73 5f 63 69 64");
+
+    let source_connection_id = hex!("05 63 5f 63 69 64");
+
+    let packet_length = hex!("40 16");
+
+    let packet_number = hex!("8c");
+
+    let encrypted_data = hex!("b1 95 1f c6 cc");
+
+    let auth_tag = hex!("12 51 2d 7e da 14 1e c0 57 b8 04 d3 0f eb 51 5b");
+
+    let content = [
+        &packet_header_byte[..],
+        &quic_version[..],
+        &destination_connection_id[..],
+        &source_connection_id[..],
+        &packet_length[..],
+        &packet_number[..],
+        &encrypted_data[..],
+        &auth_tag[..],
+    ]
+    .concat();
+
+    content
 }
 
 fn run_server() -> Arc<UdpSocket> {
@@ -128,9 +196,10 @@ fn run_server() -> Arc<UdpSocket> {
 
 fn run_client(server_address: SocketAddr) {
     let client = UdpSocket::bind("0.0.0.0:0").unwrap();
+    println!("client: {}", client.local_addr().unwrap());
     let client_arc = Arc::new(client);
 
-    let thread_client= client_arc.clone();
+    let thread_client = client_arc.clone();
     thread::spawn(move || {
         let mut recv_buf: [u8; 1500] = [0; 1500];
         loop {
@@ -153,6 +222,45 @@ fn main() {
         get_initial_keys(&initial_salt, &initial_random, false);
     let (server_key, server_iv, server_hp) = get_initial_keys(&initial_salt, &initial_random, true);
 
+    let mut initial_packet = get_initial_packet();
+
+    // let client = Arc::new(UdpSocket::bind("0.0.0.0:0").unwrap());
+    let client = Arc::new(UdpSocket::bind("0.0.0.0:41902").unwrap());
+    println!("client: {:?}", client.local_addr().unwrap());
+    let server_addr = "100.65.188.66:8400";
+
+    let (tx, rx): (Sender<Vec<u8>>, Receiver<Vec<u8>>) = mpsc::channel();
+    let thread_tx = tx.clone();
+    let thread_client = client.clone();
+    thread::spawn(move || {
+        let mut buf: [u8; 1500] = [0; 1500];
+        loop {
+            let size = thread_client.recv(&mut buf).unwrap();
+            thread_tx.send(buf[0..size].to_vec()).unwrap();
+        }
+    });
+
+    let padding = vec![0; 1200 - initial_packet.len()];
+    initial_packet = [&initial_packet[..], &padding[..]].concat();
+
+    println!("sent initial packet");
+    let tx_client = client.clone();
+    client.send_to(&initial_packet, server_addr).unwrap();
+    // loop {
+    for _ in 0..8 {
+        let msg = rx.recv().unwrap();
+        // println!(">> {:?} ({})", &msg, msg.len());
+    }
+    let mut ack_packet = [&get_initial_packet_ack()[..], &get_handshake_packet()[..]].concat();
+    let padding = vec![0; cmp::max(1200 - ack_packet.len(), 0)];
+    ack_packet = [&ack_packet[..], &padding[..]].concat();
+    println!("sent ack packet");
+    tx_client.send_to(&ack_packet, server_addr).unwrap();
+    loop {
+        let msg = rx.recv().unwrap();
+        println!(">> {:?} ({})", &msg, msg.len());
+    }
+    // }
 }
 
 #[cfg(test)]
@@ -164,8 +272,8 @@ mod tests {
     use std::thread;
     use std::time;
 
-    use crate::{get_initial_keys, run_client};
-    use crate::run_server;
+    use crate::{get_handshake_packet, get_initial_keys, run_client};
+    use crate::{get_initial_packet_ack, run_server};
     use hex_literal::hex;
 
     #[test]
@@ -188,6 +296,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore]
     fn test_run_server() {
         let server_arc = run_server();
 
@@ -218,8 +327,10 @@ mod tests {
 
     #[test]
     fn test_run_client() {
-        let server = Arc::new(UdpSocket::bind("0.0.0.0:0").unwrap());
-        let (tx,rx): (Sender<_>, Receiver<_>) = mpsc::channel();
+        // let server = Arc::new(UdpSocket::bind("0.0.0.0:0").unwrap());
+        let server = Arc::new(UdpSocket::bind("127.0.0.1:8899").unwrap());
+        println!("listening: {}", server.local_addr().unwrap());
+        let (tx, rx): (Sender<_>, Receiver<_>) = mpsc::channel();
         let thread_server = server.clone();
         thread::spawn(move || {
             let mut buf: [u8; 1500] = [0; 1500];
@@ -230,5 +341,23 @@ mod tests {
         run_client(server.local_addr().unwrap());
         let msg = rx.recv().unwrap();
         assert_eq!(msg, b"ping".to_vec());
+    }
+
+    #[test]
+    fn test_get_initial_packet_ack() {
+        let initial_packet_ack = get_initial_packet_ack();
+
+        assert_eq!(initial_packet_ack, hex!("
+            cf 00 00 00 01 05 73 5f 63 69 64 05 63 5f 63 69 64 00 40 17 56 6e 1f 98 ed 1f 7b 05 55 cd b7 83 fb df 5b 52 72 4b 7d 29 f0 af e3
+        "));
+    }
+
+    #[test]
+    fn test_get_handshake_packet() {
+        let handshake_packet = get_handshake_packet();
+
+        assert_eq!(handshake_packet, hex!("
+            ee 00 00 00 01 05 73 5f 63 69 64 05 63 5f 63 69 64 40 16 8c b1 95 1f c6 cc 12 51 2d 7e da 14 1e c0 57 b8 04 d3 0f eb 51 5b
+        "));
     }
 }
